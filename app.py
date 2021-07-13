@@ -5,6 +5,7 @@ from datetime import datetime
 import numpy as np
 import json
 from random import uniform
+from werkzeug.exceptions import HTTPException
 
 app = Flask(__name__)
 
@@ -33,15 +34,19 @@ def generate_data(sensor, output_type, dc_value = None, ac_value = None):
     else:
         return "Wrong output type"
 
-    try:
-        producer = KafkaProducer(bootstrap_servers='localhost:9092', value_serializer=lambda m: json.dumps(m).encode('utf-8'))
-        producer.send('Generation', key=key, value=value)
-        producer.flush()
-    except NoBrokersAvailable:
-        return "Broker is not available"
+    producer = KafkaProducer(bootstrap_servers='localhost:9092', value_serializer=lambda m: json.dumps(m).encode('utf-8'))
+    producer.send('Generation', key=key, value=value)
+    producer.flush()
 
     return "Data sended"
 
 @app.route("/")
 def callback():
     return "Please provide sensor data"
+
+@app.errorhandler(500)
+def internal_error(error):
+    if isinstance(error, NoBrokersAvailable):
+        return "No Broker Available", 500
+
+    return error
