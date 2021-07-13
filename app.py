@@ -7,8 +7,11 @@ import json
 from random import uniform
 from werkzeug.exceptions import HTTPException
 
+# Global Variable
 app = Flask(__name__)
+producer = KafkaProducer(bootstrap_servers='localhost:9092', value_serializer=lambda m: json.dumps(m).encode('utf-8'), acks=0)
 
+# Utility Function
 def gauss(x, mean, std):
     return np.exp(-np.power(x - mean, 2.) / (2 * np.power(std, 2.)))
 
@@ -34,10 +37,8 @@ def generate_data(sensor, output_type, dc_value = None, ac_value = None):
     else:
         return "Wrong output type"
 
-    producer = KafkaProducer(bootstrap_servers='localhost:9092', value_serializer=lambda m: json.dumps(m).encode('utf-8'))
     producer.send('Generation', key=key, value=value)
-    producer.flush()
-
+    producer.flush(timeout=1)
     return "Data sended"
 
 @app.route("/")
@@ -46,7 +47,10 @@ def callback():
 
 @app.errorhandler(500)
 def internal_error(error):
+    if isinstance(error, HTTPException):
+        return error
+
     if isinstance(error, NoBrokersAvailable):
         return "No Broker Available", 500
 
-    return error
+    return "ERROR: 500", 500
