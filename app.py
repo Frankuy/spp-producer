@@ -4,6 +4,7 @@ from kafka.errors import NoBrokersAvailable
 from datetime import datetime
 import numpy as np
 import json
+from random import uniform
 
 app = Flask(__name__)
 
@@ -18,8 +19,12 @@ def generate_data(sensor, output_type, dc_value = None, ac_value = None):
         if (output_type == 'normal'):
             time = datetime.now()
             time = time.hour * 60 * 60 + time.minute * 60 + time.second
-            dc_value = 12000 * gauss(time, 43199.5, 8045.655363652019)
-            ac_value = 1200 * gauss(time, 43199.5, 8045.655363652019)
+
+            gauss_val = gauss(time, 43199.5, 8045.655363652019)
+            [min_dc, max_dc] = [6000 * gauss_val, 14000 * gauss_val]
+            [min_ac, max_ac] = [600 * gauss_val, 1400 * gauss_val]
+            dc_value = uniform(min_dc, max_dc)
+            ac_value = uniform(min_ac, max_ac)
         
         value = {
             'dc': dc_value,
