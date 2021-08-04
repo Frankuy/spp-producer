@@ -21,16 +21,24 @@ def generate_data(sensor, output_type, dc_value = None, ac_value = None):
     key = bytes(sensor, encoding='utf-8')
     if (output_type == 'normal' or output_type == 'constant'):
         if (output_type == 'normal'):
-            time = datetime.now()
-            time = time.hour * 60 * 60 + time.minute * 60 + time.second
+            time = datetime.now().astimezone()
+            curr_offset  = time.utcoffset()
+            curr_hour, curr_minute = curr_offset.seconds//3600, (curr_offset.seconds//60)%60
+            india_hour, india_minute = (time.hour + (+5 - curr_hour)), (time.minute + (+30 - curr_minute)) # Convert to India Time (+05:30)
+            timeInteger = india_hour * 60 * 60 + india_minute * 60 + time.second
 
-            gauss_val = gauss(time, 43199.5, 8045.655363652019)
-            [min_dc, max_dc] = [6000 * gauss_val, 14000 * gauss_val]
-            [min_ac, max_ac] = [600 * gauss_val, 1400 * gauss_val]
+            gauss_val = gauss(timeInteger, 43199.5, 8045.655363652019)
+            # [min_dc, max_dc] = [6000 * gauss_val, 14000 * gauss_val]
+            # [min_ac, max_ac] = [600 * gauss_val, 1400 * gauss_val]
+            [min_dc, max_dc] = [0, 14000 * gauss_val]
             dc_value = uniform(min_dc, max_dc)
+
+            [min_ac, max_ac] = [0, dc_value]
             ac_value = uniform(min_ac, max_ac)
-        
+
         value = {
+            'timestamp': time.strftime("%d-%m-%Y %H:%M:%S"),
+            'sensor': sensor,
             'dc': dc_value,
             'ac': ac_value
         }
