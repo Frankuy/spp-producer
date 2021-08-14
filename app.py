@@ -6,47 +6,74 @@ import numpy as np
 import json
 from random import uniform
 from werkzeug.exceptions import HTTPException
+import os
+
+# Environment Setting
+BROKERS = os.getenv('KAFKA_BROKERS').split(',') if os.getenv('KAFKA_BROKERS') else ['localhost:9091','localhost:9092','localhost:9093']
+INTERVAL_MS = int(os.getenv('INTERVAL')) if os.getenv('INTERNAL') else 1000
+print('brokers', BROKERS)
 
 # Global Variable
 app = Flask(__name__)
-producer = KafkaProducer(bootstrap_servers='localhost:9092', value_serializer=lambda m: json.dumps(m).encode('utf-8'), acks=0)
+producer = KafkaProducer(
+    bootstrap_servers=BROKERS,
+    value_serializer=lambda m: json.dumps(m).encode('utf-8'),
+    linger_ms=INTERVAL_MS)
 
 # Utility Function
 def gauss(x, mean, std):
     return np.exp(-np.power(x - mean, 2.) / (2 * np.power(std, 2.)))
 
-@app.route("/<string:sensor>/<string:output_type>/<int:dc_value>/<int:ac_value>")
-@app.route("/<string:sensor>/<string:output_type>")
-def generate_data(sensor, output_type, dc_value = None, ac_value = None):
+@app.route("/<string:topic>/<string:sensor>", methods=['POST'])
+def generate_data(topic, sensor):
+    # Set sensor ID as message key
     key = bytes(sensor, encoding='utf-8')
-    if (output_type == 'normal' or output_type == 'constant'):
-        if (output_type == 'normal'):
-            time = datetime.now().astimezone()
-            curr_offset  = time.utcoffset()
-            curr_hour, curr_minute = curr_offset.seconds//3600, (curr_offset.seconds//60)%60
-            india_hour, india_minute = (time.hour + (+5 - curr_hour)), (time.minute + (+30 - curr_minute)) # Convert to India Time (+05:30)
-            timeInteger = india_hour * 60 * 60 + india_minute * 60 + time.second
 
-            gauss_val = gauss(timeInteger, 43199.5, 8045.655363652019)
-            # [min_dc, max_dc] = [6000 * gauss_val, 14000 * gauss_val]
-            # [min_ac, max_ac] = [600 * gauss_val, 1400 * gauss_val]
-            [min_dc, max_dc] = [0, 14000 * gauss_val]
-            dc_value = uniform(min_dc, max_dc)
+    # Calculate India Time in Integer
+    time = datetime.now().astimezone()
+    curr_offset  = time.utcoffset()
+    curr_hour, curr_minute = curr_offset.seconds//3600, (curr_offset.seconds//60)%60
+    india_hour, india_minute = (time.hour + (+5 - curr_hour)), (time.minute + (+30 - curr_minute)) # Convert to India Time (+05:30)
+    timeInteger = india_hour * 60 * 60 + india_minute * 60 + time.second
 
-            [min_ac, max_ac] = [0, dc_value]
-            ac_value = uniform(min_ac, max_ac)
+    # Enter message value as dictionary
+    mean = 43199.5
+    std = 8045.655363652019
+    if (topic == 'generation'):
+        # Calculate DC/AC value at current India Time
+        gauss_val = gauss(timeInteger, mean, std)
+        [min_dc, max_dc] = [0, 14000 * gauss_val]
+        dc_value = uniform(min_dc, max_dc)
+        [min_ac, max_ac] = [0, dc_value]
+        ac_value = uniform(min_ac, max_ac)
 
         value = {
-            'timestamp': time.strftime("%d-%m-%Y %H:%M:%S"),
+            'timestamp': round(datetime.now().timestamp() * 1000),
             'sensor': sensor,
-            'dc': dc_value,
-            'ac': ac_value
+            'dc_power': dc_value,
+            'ac_power': ac_value
+        }
+    elif (topic == 'weather'):
+        gauss_val_1 = gauss(timeInteger, mean, std)
+        gauss_val_2 = gauss(timeInteger, mean + 10000, std + 8000)
+        [min_irr, max_irr] = [0, 1.2 * gauss_val_1]
+        irr = uniform(min_irr, max_irr)
+        [min_module, max_module] = [20, 40 * gauss_val_1 + 25]
+        module = uniform(min_module, max_module)
+        [min_ambient, max_ambient] = [20, 26 * gauss_val_2 + 25]
+        ambient = uniform(min_ambient, max_ambient)
+        value = {
+            'timestamp': round(datetime.now().timestamp() * 1000),
+            'sensor': sensor,
+            'irradiance': irr,
+            'module_temp': module,
+            'ambient_temp': ambient
         }
     else:
-        return "Wrong output type"
+        return "No topic available"
 
-    producer.send('Generation', key=key, value=value)
-    producer.flush(timeout=1)
+    # Send message to topic
+    producer.send(topic, key=key, value=value)
     return "Data sended"
 
 @app.route("/")
