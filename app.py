@@ -11,7 +11,6 @@ import os
 # Environment Setting
 BROKERS = os.getenv('KAFKA_BROKERS').split(',') if os.getenv('KAFKA_BROKERS') else ['localhost:9091','localhost:9092','localhost:9093']
 INTERVAL_MS = int(os.getenv('INTERVAL')) if os.getenv('INTERNAL') else 1000
-print('brokers', BROKERS)
 
 # Global Variable
 app = Flask(__name__)
@@ -23,6 +22,12 @@ producer = KafkaProducer(
 # Utility Function
 def gauss(x, mean, std):
     return np.exp(-np.power(x - mean, 2.) / (2 * np.power(std, 2.)))
+
+# Callbacks
+# def on_send_success(record_metadata):
+#     print(record_metadata)
+# def on_send_error(e):
+#     print(e)
 
 @app.route("/<string:topic>/<string:sensor>", methods=['POST'])
 def generate_data(topic, sensor):
@@ -73,6 +78,7 @@ def generate_data(topic, sensor):
         return "No topic available"
 
     # Send message to topic
+#     producer.send(topic, key=key, value=value).add_callback(on_send_success).add_errback(on_send_error)
     producer.send(topic, key=key, value=value)
     return "Data sended"
 
